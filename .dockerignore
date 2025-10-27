@@ -1,0 +1,27 @@
+# .dockerignore
+
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Go build cache
+.go/
+build/
+*.bin
+*.exe
+
+# Module files (if you're vendoring)
+vendor/
+
+# Local environment files
+.env
+*.env
+
+# Documentation
+*.md
+README.md
+LICENSE
+
+# OS files
+.DS_Store
