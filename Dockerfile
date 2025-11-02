@@ -1,35 +1,46 @@
-# Use the official Go image as a base for building the application
-FROM golang:1.24-alpine as builder
+# --- Stage 1: Build the Go application ---
+# On an M1 Mac, this 'FROM' automatically pulls the ARM64 image.
+# We will use it to *natively* cross-compile to AMD64.
+FROM golang:1.24-alpine AS builder
 
-# Set the working directory inside the container
 WORKDIR /app
 
-# Install necessary build tools
-RUN apk add --no-cache git
+# (Optional) Install git if you use private modules
+# RUN apk add --no-cache git
 
-# Copy the Go modules manifests
+# Set cross-compilation targets for Cloud Run (Linux AMD64)
+# This is *required* for building on M1 for Cloud Run.
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+ENV GOARCH=amd64
+
+# Copy and download dependencies first to leverage build cache
 COPY go.mod go.sum ./
-
-# Download Go modules
 RUN go mod download
 
-# Copy the source code
+# Copy all source code
 COPY . .
 
-# Build the Go application
-RUN go build -o main ./cmd/app/main.go
+# Build the static binary, stripping debug info (-w -s) to reduce size.
+# The output path is /app/main
+RUN go build -ldflags="-w -s" -o /app/main ./cmd/app/main.go
 
-# Use a minimal base image for the final container
-FROM gcr.io/distroless/base-debian11
+# --- Stage 2: Create the final minimal runtime container ---
+# We MUST specify --platform=linux/amd64 for the final stage
+# to ensure Docker pulls the AMD64 base image, not the ARM64 one.
+# We use 'static-debian12' because our binary is fully static (CGO_ENABLED=0).
+FROM --platform=linux/amd64 gcr.io/distroless/static-debian12
 
-# Set the working directory inside the container
-WORKDIR /
+# Use a non-root user (this is the default in distroless, but good to be explicit)
+USER nonroot:nonroot
 
-# Copy the built binary from the builder stage
+WORKDIR /app
+
+# Copy *only* the compiled binary from the builder stage
 COPY --from=builder /app/main .
 
-# Expose the port your app runs on
+# (Optional) Informative port. Your app must read $PORT from the env.
 EXPOSE 8080
 
-# Command to run the executable
-CMD ["./main"]
+# Set the entrypoint to run the application
+ENTRYPOINT ["/app/main"]

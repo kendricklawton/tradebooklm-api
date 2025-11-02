@@ -1,27 +1,16 @@
-# .dockerignore
-
 # Git files
 .git
 .gitignore
-.gitattributes
 
-# Go build cache
-.go/
-build/
-*.bin
-*.exe
+# Docker
+Dockerfile
+.dockerignore
 
-# Module files (if you're vendoring)
-vendor/
+# IDE and OS files
+.idea
+.vscode
+*.DS_Store
 
-# Local environment files
+# Local dev
+*.log
 .env
-*.env
-
-# Documentation
-*.md
-README.md
-LICENSE
-
-# OS files
-.DS_Store

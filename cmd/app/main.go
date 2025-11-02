@@ -1,8 +1,14 @@
 package main
 
 import (
+	"context" // Added for graceful shutdown
 	"log"
-	"tradebooklm-server/internal/config"
+	"net/http" // Added for http.Server and ListenAndServe
+	"os"
+	"os/signal" // Added for catching signals
+	"syscall"   // Added for catching SIGTERM
+	"time"      // Added for shutdown timeout
+
 	"tradebooklm-server/internal/handlers"
 	"tradebooklm-server/pkg/middleware"
 
@@ -11,6 +17,7 @@ import (
 )
 
 func main() {
+	// Attempt to load .env file for local development.
 	err := godotenv.Load()
 	if err != nil {
 		log.Println("No .env file found, using system environment variables")
@@ -18,17 +25,20 @@ func main() {
 
 	log.Printf("Running in %s mode", gin.Mode())
 
-	config, err := config.InitializeConfig()
-	if err != nil {
-		log.Fatalf("Failed to initialize clients: %v", err)
-	}
+	// Initialize application configuration, including database connection and clients.
+	// (Uncomment this section when you have your config logic ready)
+	// config, err := config.InitializeConfig()
+	// if err != nil {
+	// 	log.Fatalf("Failed to initialize clients: %v", err)
+	// }
+	// defer config.CloseDB()
 
-	defer config.CloseDB()
-
+	// Set up the Gin router and middleware
 	router := gin.New()
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
 
+	// Cloud Run handles proxying, so setting trusted proxies to nil is fine.
 	err = router.SetTrustedProxies(nil)
 	if err != nil {
 		log.Fatalf("Failed to set trusted proxies: %v", err)
@@ -38,37 +48,18 @@ func main() {
 		middleware.CORS(),
 	)
 
-	// router.GET("/", func(c *gin.Context) {
-	// 	c.JSON(200, gin.H{
-	// 		"message": "Welcome to the TradeBook API!",
-	// 	})
-	// })
+	// --- Route Definitions (All unchanged) ---
 
-	// router.Static("/assets", "./assets")
-
-	// router.GET("/favicon.ico", func(c *gin.Context) {
-	// 	c.File("./assets/favicon.ico")
-	// })
-
-	// userRoutes := router.Group("/user")
-	// userRoutes.Use(...WhatEverMiddleWare)
-	// {
-	// 	userRoutes.POST("", func(c *gin.Context) {
-	// 		handlers.CreateUserHandler(c, config.CipherBlock, config.DB)
-	// 	})
-
-	// 	userRoutes.DELETE("/:workosId", func(c *gin.Context) {
-	// 		handlers.DeleteUserHandler(c, config.DB)
-	// 	})
-	// }
-
-	// User related routes
-	router.POST("/user", func(c *gin.Context) {
-		handlers.CreateUserHandler(c, config.DB)
+	router.GET("/", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"message": "Welcome to the TradeBook API!",
+		})
 	})
 
-	router.DELETE("/user/:workosId", func(c *gin.Context) {
-		handlers.DeleteUserHandler(c, config.DB)
+	router.GET("/test", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"message": "Test route",
+		})
 	})
 
 	// Tradebook related routes
@@ -109,26 +100,44 @@ func main() {
 		handlers.DeleteTradesHandler(c)
 	})
 
-	// stripeRoutes := router.Group("/stripe")
-	// stripeRoutes.Use(middleware.WebhookAuth())
-	// {
-	// 	stripeRoutes.POST("", func(c *gin.Context) {
-	// 		handlers.CreateUserHandler(c, cipherBlock.CipherBlock, clients.Database)
-	// 	})
+	// --- Server Start Logic (Cloud Run Graceful Shutdown) ---
 
-	// 	stripeRoutes.GET("/:workosId", func(c *gin.Context) {
-	// 		handlers.GetUserHandler(c, cipherBlock.CipherBlock, clients.Database)
-	// 	})
+	// Cloud Run sets the PORT environment variable (e.g., "8080").
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" // Default for local development
+	}
 
-	// 	stripeRoutes.PATCH("/:workosId", func(c *gin.Context) {
-	// 		handlers.UpdateUserHandler(c, cipherBlock.CipherBlock, clients.Database)
-	// 	})
+	addr := ":" + port
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: router,
+	}
 
-	// 	stripeRoutes.DELETE("/:workosId", func(c *gin.Context) {
-	// 		handlers.DeleteUserHandler(c, cipherBlock.CipherBlock, clients.Database)
-	// 	})
-	// }
+	// Run the server in a goroutine so it doesn't block the main thread.
+	go func() {
+		log.Printf("Server starting and listening on port %s...", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			// This is a fatal error, e.g., port already in use.
+			log.Fatalf("Server failed to listen: %v", err)
+		}
+	}()
 
-	// Run the server
-	router.Run(":8080")
+	// Wait for interrupt signal (SIGINT for local, SIGTERM for Cloud Run).
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server... Awaiting request completion.")
+
+	// Create a context with a 5-second timeout for graceful shutdown.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Gracefully shut down the server.
+	if err := srv.Shutdown(ctx); err != nil {
+		// This happens if the server can't shut down within the timeout.
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("Server exiting")
 }

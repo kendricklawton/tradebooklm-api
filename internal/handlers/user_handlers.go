@@ -1,91 +1,81 @@
 package handlers
 
-import (
-	"database/sql"
-	"log"
-	"net/http"
-	"tradebooklm-server/internal/models"
+// func CreateUserHandler(c *gin.Context, db *sql.DB) {
+// 	var user models.WorkosUser
 
-	"github.com/gin-gonic/gin"
-	"github.com/lib/pq"
-)
+// 	log.Printf("User: %v", user)
 
-func CreateUserHandler(c *gin.Context, db *sql.DB) {
-	var user models.WorkosUser
+// 	if err := c.ShouldBindJSON(&user); err != nil {
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+// 		return
+// 	}
 
-	log.Printf("User: %v", user)
+// 	dbUser := models.DBUser{
+// 		WorkosID:  user.ID,
+// 		CreatedAt: user.CreatedAt,
+// 		UpdatedAt: user.UpdatedAt,
+// 	}
 
-	if err := c.ShouldBindJSON(&user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
-		return
-	}
+// 	log.Printf("Creating user with WorkOS ID: %s", dbUser.WorkosID)
 
-	dbUser := models.DBUser{
-		WorkosID:  user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-	}
+// 	query := `
+// 		INSERT INTO users (workos_id, created_at, updated_at)
+// 		VALUES ($1, $2, $3)
+// 		RETURNING id, workos_id, created_at, updated_at
+// 	`
 
-	log.Printf("Creating user with WorkOS ID: %s", dbUser.WorkosID)
+// 	ctx := c.Request.Context()
+// 	err := db.QueryRowContext(ctx, query, dbUser.WorkosID, dbUser.CreatedAt, dbUser.UpdatedAt).Scan(
+// 		&dbUser.ID,
+// 		&dbUser.WorkosID,
+// 		&dbUser.CreatedAt,
+// 		&dbUser.UpdatedAt,
+// 	)
 
-	query := `
-		INSERT INTO users (workos_id, created_at, updated_at)
-		VALUES ($1, $2, $3)
-		RETURNING id, workos_id, created_at, updated_at
-	`
+// 	if err != nil {
+// 		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
+// 			log.Printf("Conflict: User with WorkOS ID %s already exists", dbUser.WorkosID)
+// 			c.JSON(http.StatusConflict, gin.H{"error": "User already exists"})
+// 			return
+// 		}
 
-	ctx := c.Request.Context()
-	err := db.QueryRowContext(ctx, query, dbUser.WorkosID, dbUser.CreatedAt, dbUser.UpdatedAt).Scan(
-		&dbUser.ID,
-		&dbUser.WorkosID,
-		&dbUser.CreatedAt,
-		&dbUser.UpdatedAt,
-	)
+// 		log.Printf("Error creating user: %v", err)
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+// 		return
+// 	}
 
-	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
-			log.Printf("Conflict: User with WorkOS ID %s already exists", dbUser.WorkosID)
-			c.JSON(http.StatusConflict, gin.H{"error": "User already exists"})
-			return
-		}
+// 	log.Printf("Successfully created dbUser: %+v", dbUser)
+// 	c.Status(http.StatusCreated)
+// }
 
-		log.Printf("Error creating user: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
-		return
-	}
+// func DeleteUserHandler(c *gin.Context, db *sql.DB) {
+// 	workosID := c.Param("workosId")
 
-	log.Printf("Successfully created dbUser: %+v", dbUser)
-	c.Status(http.StatusCreated)
-}
+// 	log.Printf("Deleting user with WorkOS ID: %s", workosID)
 
-func DeleteUserHandler(c *gin.Context, db *sql.DB) {
-	workosID := c.Param("workosId")
+// 	query := "DELETE FROM users WHERE workos_id = $1"
 
-	log.Printf("Deleting user with WorkOS ID: %s", workosID)
+// 	ctx := c.Request.Context()
+// 	result, err := db.ExecContext(ctx, query, workosID)
+// 	if err != nil {
+// 		log.Printf("Error deleting user: %v", err)
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
+// 		return
+// 	}
 
-	query := "DELETE FROM users WHERE workos_id = $1"
+// 	rowsAffected, err := result.RowsAffected()
+// 	if err != nil {
+// 		log.Printf("Error getting rows affected: %v", err)
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
+// 		return
+// 	}
 
-	ctx := c.Request.Context()
-	result, err := db.ExecContext(ctx, query, workosID)
-	if err != nil {
-		log.Printf("Error deleting user: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
-		return
-	}
+// 	if rowsAffected == 0 {
+// 		log.Printf("User not found for deletion: %s", workosID)
+// 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+// 		return
+// 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		log.Printf("Error getting rows affected: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
-		return
-	}
-
-	if rowsAffected == 0 {
-		log.Printf("User not found for deletion: %s", workosID)
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		return
-	}
-
-	log.Printf("Successfully deleted workos user: %s", workosID)
-	c.Status(http.StatusNoContent)
-}
+// 	log.Printf("Successfully deleted workos user: %s", workosID)
+// 	c.Status(http.StatusNoContent)
+// }
