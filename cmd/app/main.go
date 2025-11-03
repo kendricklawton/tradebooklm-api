@@ -71,6 +71,14 @@ func main() {
 		handlers.DeleteTradebookHandler(c)
 	})
 
+	router.POST("/user", func(c *gin.Context) {
+		handlers.CreateUserHandler(c)
+	})
+
+	router.DELETE("/user/:userId", func(c *gin.Context) {
+		handlers.DeleteUserHandler(c)
+	})
+
 	router.GET("/tradebook/:tradebookId", func(c *gin.Context) {
 		handlers.GetTradebooksHandler(c)
 	})
