@@ -18,8 +18,9 @@ ENV GOARCH=amd64
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy all source code
+# Copy all source code and migrations
 COPY . .
+COPY migrations/ ./migrations/
 
 # Build the static binary, stripping debug info (-w -s) to reduce size.
 # The output path is /app/main
@@ -36,8 +37,9 @@ USER nonroot:nonroot
 
 WORKDIR /app
 
-# Copy *only* the compiled binary from the builder stage
+# Copy the compiled binary and migrations from the builder stage
 COPY --from=builder /app/main .
+COPY --from=builder /app/migrations ./migrations
 
 # (Optional) Informative port. Your app must read $PORT from the env.
 EXPOSE 8080

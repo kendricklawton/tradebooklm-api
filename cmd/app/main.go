@@ -1,44 +1,42 @@
 package main
 
 import (
-	"context" // Added for graceful shutdown
+	"context"
 	"log"
-	"net/http" // Added for http.Server and ListenAndServe
+	"net/http"
 	"os"
-	"os/signal" // Added for catching signals
-	"syscall"   // Added for catching SIGTERM
-	"time"      // Added for shutdown timeout
+	"os/signal"
+	"syscall"
+	"time"
 
-	"tradebooklm-server/internal/handlers"
-	"tradebooklm-server/pkg/middleware"
+	"tradebooklm-api/internal/config"
+	"tradebooklm-api/internal/handlers"
+	"tradebooklm-api/pkg/middleware"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
 
 func main() {
-	// Attempt to load .env file for local development.
 	err := godotenv.Load()
 	if err != nil {
-		log.Println("No .env file found, using system environment variables")
+		log.Printf("No env file found. Using System Environment Variables")
 	}
 
-	log.Printf("Running in %s mode", gin.Mode())
+	config, err := config.InitializeConfig()
+	if err != nil {
+		log.Fatalf("Failed to initialize clients: %v", err)
+	}
+	middleware.InitAuth()
+	defer config.CloseDB()
 
-	// Initialize application configuration, including database connection and clients.
-	// (Uncomment this section when you have your config logic ready)
-	// config, err := config.InitializeConfig()
-	// if err != nil {
-	// 	log.Fatalf("Failed to initialize clients: %v", err)
-	// }
-	// defer config.CloseDB()
-
-	// Set up the Gin router and middleware
 	router := gin.New()
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
 
-	// Cloud Run handles proxying, so setting trusted proxies to nil is fine.
+	log.Printf("Running in %s mode", gin.Mode())
+
+	// Cloud Run handles proxying
 	err = router.SetTrustedProxies(nil)
 	if err != nil {
 		log.Fatalf("Failed to set trusted proxies: %v", err)
@@ -48,72 +46,75 @@ func main() {
 		middleware.CORS(),
 	)
 
-	// --- Route Definitions (All unchanged) ---
-
 	router.GET("/", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"message": "Welcome to the TradeBook API!",
 		})
 	})
 
-	router.GET("/test", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"message": "Test route",
+	webhookAPI := router.Group("/")
+	webhookAPI.Use(middleware.WebhookMiddleware())
+	{
+		webhookAPI.POST("/user", func(c *gin.Context) {
+			handlers.UpsertUser(c, config.DB)
 		})
-	})
 
-	// Tradebook related routes
-	router.POST("/tradebook", func(c *gin.Context) {
-		handlers.CreateTradebookHandler(c)
-	})
+		webhookAPI.DELETE("/user", func(c *gin.Context) {
+			handlers.DeleteUser(c, config.DB)
+		})
 
-	router.DELETE("/tradebook/:tradebookId", func(c *gin.Context) {
-		handlers.DeleteTradebookHandler(c)
-	})
+		webhookAPI.PATCH("/user", func(c *gin.Context) {
+			handlers.UpsertUser(c, config.DB)
+		})
+	}
 
-	router.POST("/user", func(c *gin.Context) {
-		handlers.CreateUserHandler(c)
-	})
+	api := router.Group("/")
+	api.Use(middleware.AuthMiddleware())
+	{
+		api.POST("/tradebook", func(c *gin.Context) {
+			handlers.CreateTradebook(c, config.DB)
+		})
 
-	router.DELETE("/user/:userId", func(c *gin.Context) {
-		handlers.DeleteUserHandler(c)
-	})
+		api.DELETE("/tradebook/:tradebookId", func(c *gin.Context) {
+			handlers.DeleteTradebook(c, config.DB)
+		})
 
-	router.GET("/tradebook/:tradebookId", func(c *gin.Context) {
-		handlers.GetTradebooksHandler(c)
-	})
+		api.DELETE("/tradebooks", func(c *gin.Context) {
+			handlers.DeleteTradebooks(c, config.DB)
+		})
 
-	router.GET("/tradebooks", func(c *gin.Context) {
-		handlers.GetTradebooksHandler(c)
-	})
+		api.GET("/tradebook/:tradebookId", func(c *gin.Context) {
+			handlers.GetTradebook(c, config.DB)
+		})
 
-	router.PATCH("/tradebook/:tradebookId", func(c *gin.Context) {
-		handlers.UpdateTradebookHandler(c)
-	})
+		api.GET("/tradebooks", func(c *gin.Context) {
+			handlers.GetTradebooks(c, config.DB)
+		})
 
-	// Trade related routes
-	router.POST("/trade/:tradebookId", func(c *gin.Context) {
-		handlers.CreateTradesHandler(c)
-	})
+		api.PATCH("/tradebook/:tradebookId", func(c *gin.Context) {
+			handlers.UpdateTradebook(c, config.DB)
+		})
 
-	router.GET("/trade/:tradebookId", func(c *gin.Context) {
-		handlers.GetTradesHandler(c)
-	})
+		api.POST("/trade/:tradebookId", func(c *gin.Context) {
+			handlers.CreateTrades(c, config.DB, config.KMS)
+		})
 
-	router.PATCH("/trade/:tradebookId/:tradeId", func(c *gin.Context) {
-		handlers.UpdateTradesHandler(c)
-	})
+		api.GET("/trade/:tradebookId", func(c *gin.Context) {
+			handlers.GetTrades(c, config.DB, config.KMS)
+		})
 
-	router.DELETE("/trade/:tradebookId", func(c *gin.Context) {
-		handlers.DeleteTradesHandler(c)
-	})
+		api.PATCH("/trade/:tradebookId/:tradeId", func(c *gin.Context) {
+			handlers.UpdateTrades(c, config.DB, config.KMS)
+		})
 
-	// --- Server Start Logic (Cloud Run Graceful Shutdown) ---
+		api.DELETE("/trade/:tradebookId", func(c *gin.Context) {
+			handlers.DeleteTrades(c, config.DB)
+		})
+	}
 
-	// Cloud Run sets the PORT environment variable (e.g., "8080").
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080" // Default for local development
+		port = "8080"
 	}
 
 	addr := ":" + port
