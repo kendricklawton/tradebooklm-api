@@ -16,3 +16,7 @@ Dockerfile
 .env
 /keys
 DEV.md
+
+# Unused directories
+assets
+sql

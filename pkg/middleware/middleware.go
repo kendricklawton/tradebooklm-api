@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"tradebooklm-api/internal/helpers"
 
 	"github.com/MicahParks/keyfunc/v2"
 	"github.com/gin-contrib/cors"
@@ -13,14 +14,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/workos/workos-go/v6/pkg/usermanagement"
 )
-
-func mustGetenv(k string) string {
-	v := os.Getenv(k)
-	if v == "" {
-		log.Fatalf("Fatal Error in connect_connector.go: %s environment variable not set.\n", k)
-	}
-	return v
-}
 
 func CORS() gin.HandlerFunc {
 	return cors.New(cors.Config{
@@ -42,8 +35,8 @@ var (
 func InitAuth() {
 
 	var (
-		workosAPIKey   = mustGetenv("WORKOS_API_KEY")
-		workosClientID = mustGetenv("WORKOS_CLIENT_ID")
+		workosAPIKey   = helpers.MustGetenv("WORKOS_API_KEY")
+		workosClientID = helpers.MustGetenv("WORKOS_CLIENT_ID")
 	)
 
 	usermanagement.SetAPIKey(workosAPIKey)
@@ -62,7 +55,7 @@ func InitAuth() {
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var (
-			workosClientID = mustGetenv("WORKOS_CLIENT_ID")
+			workosClientID = helpers.MustGetenv("WORKOS_CLIENT_ID")
 		)
 
 		authHeader := c.GetHeader("Authorization")
@@ -120,7 +113,7 @@ func AuthMiddleware() gin.HandlerFunc {
 
 func WebhookMiddleware() gin.HandlerFunc {
 	var (
-		internalSecret = mustGetenv("INTERNAL_API_SECRET")
+		internalSecret = helpers.MustGetenv("INTERNAL_API_SECRET")
 	)
 
 	return func(c *gin.Context) {

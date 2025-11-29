@@ -3,15 +3,13 @@ package helpers
 import (
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
-// GetWorkosID retrieves the workos_id from the Gin context.
-// If the ID exists and is a string, it returns the ID and true.
-// Otherwise, it logs the error, sends an appropriate JSON error response,
-// and returns an empty string and false. This allows handlers to exit early.
 func GetWorkosID(c *gin.Context) (string, bool) {
 	workosIdInterface, exists := c.Get("workos_id")
 	if !exists {
@@ -30,28 +28,39 @@ func GetWorkosID(c *gin.Context) (string, bool) {
 	return workosId, true
 }
 
-// ParsePagination extracts limit and page from the query string,
-// applies defaults/constraints, and calculates the SQL offset.
-// Returns: (limit, offset)
-func ParsePagination(c *gin.Context) (int, int) {
-	// Parse "limit" with a default of 25
-	limit, err := strconv.Atoi(c.DefaultQuery("limit", "25"))
-	if err != nil || limit <= 0 {
-		limit = 25
+func GetPaginationParams(c *gin.Context) (int32, int32) {
+	pageStr := c.DefaultQuery("page", "1")
+	limitStr := c.DefaultQuery("limit", "20")
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
 	}
-	// Hard cap limit to prevent massive queries
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 {
+		limit = 20
+	}
+
+	// Hard limit of 100 items per page
 	if limit > 100 {
 		limit = 100
 	}
 
-	// Parse "page" with a default of 1
-	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
-	if err != nil || page <= 0 {
-		page = 1
-	}
-
-	// Calculate SQL offset
+	// Calculate offset
 	offset := (page - 1) * limit
 
-	return limit, offset
+	return int32(limit), int32(offset)
+}
+
+func ParseUUID(id string) (uuid.UUID, error) {
+	return uuid.Parse(id)
+}
+
+func MustGetenv(k string) string {
+	v := os.Getenv(k)
+	if v == "" {
+		log.Fatalf("Fatal Error in config.go: %s environment variable not set.\n", k)
+	}
+	return v
 }

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"tradebooklm-api/internal/config"
-	"tradebooklm-api/internal/handlers"
+	"tradebooklm-api/internal/services"
 	"tradebooklm-api/pkg/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -56,59 +56,61 @@ func main() {
 	webhookAPI.Use(middleware.WebhookMiddleware())
 	{
 		webhookAPI.POST("/user", func(c *gin.Context) {
-			handlers.UpsertUser(c, config.DB)
+			services.UpsertUser(c, config.DB)
 		})
 
 		webhookAPI.DELETE("/user", func(c *gin.Context) {
-			handlers.DeleteUser(c, config.DB)
+			services.DeleteUser(c, config.DB)
 		})
 
 		webhookAPI.PATCH("/user", func(c *gin.Context) {
-			handlers.UpsertUser(c, config.DB)
+			services.UpsertUser(c, config.DB)
 		})
 	}
 
 	api := router.Group("/")
-	api.Use(middleware.AuthMiddleware())
+	api.Use(
+		middleware.AuthMiddleware(),
+	)
 	{
 		api.POST("/tradebook", func(c *gin.Context) {
-			handlers.CreateTradebook(c, config.DB)
+			services.CreateTradebook(c, config.DB)
 		})
 
 		api.DELETE("/tradebook/:tradebookId", func(c *gin.Context) {
-			handlers.DeleteTradebook(c, config.DB)
+			services.DeleteTradebook(c, config.DB)
 		})
 
-		api.DELETE("/tradebooks", func(c *gin.Context) {
-			handlers.DeleteTradebooks(c, config.DB)
-		})
+		// api.DELETE("/tradebooks", func(c *gin.Context) {
+		// 	services.DeleteTradebooks(c, config.DB)
+		// })
 
 		api.GET("/tradebook/:tradebookId", func(c *gin.Context) {
-			handlers.GetTradebook(c, config.DB)
+			services.GetTradebook(c, config.DB)
 		})
 
 		api.GET("/tradebooks", func(c *gin.Context) {
-			handlers.GetTradebooks(c, config.DB)
+			services.GetTradebooks(c, config.DB)
 		})
 
 		api.PATCH("/tradebook/:tradebookId", func(c *gin.Context) {
-			handlers.UpdateTradebook(c, config.DB)
+			services.UpdateTradebook(c, config.DB)
 		})
 
 		api.POST("/trade/:tradebookId", func(c *gin.Context) {
-			handlers.CreateTrades(c, config.DB, config.KMS)
+			services.CreateTrades(c, config.DB)
 		})
 
 		api.GET("/trade/:tradebookId", func(c *gin.Context) {
-			handlers.GetTrades(c, config.DB, config.KMS)
+			services.GetTrades(c, config.DB)
 		})
 
 		api.PATCH("/trade/:tradebookId/:tradeId", func(c *gin.Context) {
-			handlers.UpdateTrades(c, config.DB, config.KMS)
+			services.UpdateTrades(c, config.DB)
 		})
 
 		api.DELETE("/trade/:tradebookId", func(c *gin.Context) {
-			handlers.DeleteTrades(c, config.DB)
+			services.DeleteTrades(c, config.DB)
 		})
 	}
 

@@ -1,0 +1,35 @@
+# Version control systems
+.git/
+.gitignore
+
+# OS specific files
+.DS_Store
+
+# Editor directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Go build artifacts and dependencies
+bin/
+vendor/
+*.exe
+*.test
+*.out
+
+# Documentation and development files
+DEV.md
+README.md
+
+# Docker related
+.dockerignore
+# Do not ignore Dockerfile as it is needed for the build
+# Dockerfile
+
+# Local environment variables
+.env
+
+# Unused directories
+assets/
+sql/

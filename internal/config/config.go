@@ -8,15 +8,12 @@ import (
 	"net"
 	"os"
 	"time"
+	"tradebooklm-api/internal/helpers"
 
 	"cloud.google.com/go/cloudsqlconn"
-	kms "cloud.google.com/go/kms/apiv1"
-	"cloud.google.com/go/kms/apiv1/kmspb"
-	lru "github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"google.golang.org/api/option"
 	"google.golang.org/genai"
 )
 
@@ -24,22 +21,12 @@ type Clients struct {
 	DB     *sql.DB
 	Gemini *genai.Client
 	Stripe string
-	KMS    *KMSClient
-}
-
-type KMSClient struct {
-	client  *kms.KeyManagementClient
-	keyName string
-	// Cache Key: String(Ciphertext), Value: []byte(Plaintext Key)
-	dekCache *lru.LRU[string, []byte]
 }
 
 func InitializeConfig() (*Clients, error) {
 	var (
-		geminiApiKey    = mustGetenv("GEMINI_API_KEY")
-		googleProjectID = mustGetenv("GOOGLE_PROJECT_ID")
-		kmsKeyName      = mustGetenv("KMS_KEY_NAME")
-		stripeApiKey    = mustGetenv("STRIPE_API_KEY")
+		geminiApiKey = helpers.MustGetenv("GEMINI_API_KEY")
+		stripeApiKey = helpers.MustGetenv("STRIPE_API_KEY")
 	)
 
 	ctx := context.Background()
@@ -66,15 +53,9 @@ func InitializeConfig() (*Clients, error) {
 		return nil, fmt.Errorf("error initializing gemini client: %w", err)
 	}
 
-	kmsClient, err := newKMSClient(ctx, googleProjectID, kmsKeyName)
-	if err != nil {
-		return nil, fmt.Errorf("error initializing KMS client: %w", err)
-	}
-
 	return &Clients{
 		DB:     db,
 		Stripe: stripeApiKey,
-		KMS:    kmsClient,
 		Gemini: gemini,
 	}, nil
 }
@@ -87,10 +68,10 @@ func (c *Clients) CloseDB() {
 
 func connectWithConnector() (*sql.DB, error) {
 	var (
-		dbUser                 = mustGetenv("DB_USER")
-		dbPwd                  = mustGetenv("DB_PASS")
-		dbName                 = mustGetenv("DB_NAME")
-		instanceConnectionName = mustGetenv("INSTANCE_CONNECTION_NAME")
+		dbUser                 = helpers.MustGetenv("DB_USER")
+		dbPwd                  = helpers.MustGetenv("DB_PASS")
+		dbName                 = helpers.MustGetenv("DB_NAME")
+		instanceConnectionName = helpers.MustGetenv("INSTANCE_CONNECTION_NAME")
 		usePrivate             = os.Getenv("PRIVATE_IP")
 	)
 
@@ -169,79 +150,4 @@ func getenvWithDefault(k, fallback string) string {
 		return fallback
 	}
 	return v
-}
-
-func mustGetenv(k string) string {
-	v := os.Getenv(k)
-	if v == "" {
-		log.Fatalf("Fatal Error in config.go: %s environment variable not set.\n", k)
-	}
-	return v
-}
-
-func newKMSClient(ctx context.Context, projectID, keyName string) (*KMSClient, error) {
-	client, err := kms.NewKeyManagementClient(ctx, option.WithQuotaProject(projectID))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create KMS client: %w", err)
-	}
-
-	if keyName == "" {
-		return nil, fmt.Errorf("KMS key name cannot be empty")
-	}
-
-	// Initialize LRU Cache
-	// 1000 items: Assuming ~32 bytes per key, this is negligible memory (KB range).
-	// 5 minute TTL: Security trade-off. Revoked keys stay active for max 5 mins.
-	cache := lru.NewLRU[string, []byte](1000, nil, 5*time.Minute)
-
-	return &KMSClient{
-		client:   client,
-		keyName:  keyName,
-		dekCache: cache,
-	}, nil
-}
-
-// Encrypt simply calls KMS.
-// Note: We generally do not cache encryption results because secure encryption
-// schemes often introduce randomness (IVs), meaning the same plaintext yields
-// different ciphertext every time.
-func (k *KMSClient) Encrypt(ctx context.Context, plaintext []byte) ([]byte, error) {
-	req := &kmspb.EncryptRequest{
-		Name:      k.keyName,
-		Plaintext: plaintext,
-	}
-
-	resp, err := k.client.Encrypt(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt: %w", err)
-	}
-
-	return resp.Ciphertext, nil
-}
-
-// Decrypt attempts to retrieve the decrypted key from the local cache.
-// If missing, it calls Google KMS and caches the result.
-func (k *KMSClient) Decrypt(ctx context.Context, ciphertext []byte) ([]byte, error) {
-	// 1. Check Cache (Zero API Cost)
-	// We use the encrypted bytes (as a string) as the lookup key.
-	cacheKey := string(ciphertext)
-	if plaintext, ok := k.dekCache.Get(cacheKey); ok {
-		return plaintext, nil
-	}
-
-	// 2. Cache Miss: Call Google KMS (1 API Call)
-	req := &kmspb.DecryptRequest{
-		Name:       k.keyName,
-		Ciphertext: ciphertext,
-	}
-
-	resp, err := k.client.Decrypt(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt: %w", err)
-	}
-
-	// 3. Store in Cache for future calls
-	k.dekCache.Add(cacheKey, resp.Plaintext)
-
-	return resp.Plaintext, nil
 }

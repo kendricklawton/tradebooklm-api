@@ -1,4 +1,4 @@
-package handlers
+package services
 
 import (
 	"database/sql"
@@ -7,34 +7,25 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"tradebooklm-api/internal/database"
 	"tradebooklm-api/internal/models"
 )
 
-func UpsertUser(c *gin.Context, db *sql.DB) {
+func UpsertUser(c *gin.Context, conn *sql.DB) {
 	ctx := c.Request.Context()
 
-	var req models.WorkosCreateUserRequest
+	var req models.CreateWorkosUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
 		return
 	}
 
-	log.Printf("Received request to create/update user: %s", req.ID)
+	q := database.New(conn)
 
-	query := `
-		INSERT INTO users (id)
-		VALUES ($1)
-		ON CONFLICT (id) DO UPDATE
-		SET updated_at = NOW()
-		RETURNING id, created_at, updated_at
-	`
-
-	var id string
-	var createdAt, updatedAt any
-	err := db.QueryRowContext(ctx, query, req.ID).Scan(&id, &createdAt, &updatedAt)
+	_, err := q.UpsertUser(ctx, req.ID)
 	if err != nil {
 		log.Printf("Error upserting user: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create or update user"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upsert user"})
 		return
 	}
 

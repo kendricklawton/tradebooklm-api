@@ -26,7 +26,7 @@ CREATE TYPE tradebook_role AS ENUM ('owner', 'editor', 'reader');
 
 -- 1. Users
 CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY, -- Matches your Auth Provider ID (e.g., Supabase/Auth0)
+    id TEXT PRIMARY KEY, -- Matches Auth Provider ID
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -36,7 +36,6 @@ CREATE TABLE IF NOT EXISTS tradebooks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
-    description TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -55,7 +54,7 @@ CREATE TABLE IF NOT EXISTS trades (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tradebook_id UUID NOT NULL REFERENCES tradebooks(id) ON DELETE CASCADE,
 
-    -- Status Flag (Critical for "Open Positions" dashboards)
+    -- Status Flag
     is_open BOOLEAN NOT NULL DEFAULT TRUE,
 
     -- Classification
@@ -66,14 +65,12 @@ CREATE TABLE IF NOT EXISTS trades (
     -- Data
     entry_date TIMESTAMPTZ NOT NULL,
     symbol TEXT NOT NULL,
+    currency CHAR(3) NOT NULL DEFAULT 'USD', -- Added based on best practice
 
-    -- Financials (Numeric for AI Analysis & Sorting)
-    -- Precision (19, 8) handles Crypto (0.00000001) and large Equities
+    -- Financials
     entry_quantity NUMERIC(19, 8) NOT NULL,
     entry_price NUMERIC(19, 8) NOT NULL,
     entry_fees NUMERIC(19, 8) DEFAULT 0,
-
-    notes TEXT, -- Context for your AI to read
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -89,8 +86,6 @@ CREATE TABLE IF NOT EXISTS exit_legs (
     exit_quantity NUMERIC(19, 8) NOT NULL,
     exit_price NUMERIC(19, 8) NOT NULL,
     exit_fees NUMERIC(19, 8) DEFAULT 0,
-
-    notes TEXT,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -111,78 +106,7 @@ CREATE TABLE IF NOT EXISTS token_usage_log (
 );
 
 -- ============================================================================
--- Section 5: Row Level Security (RLS)
--- ============================================================================
-
--- A. Enable RLS on all tables
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tradebooks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tradebook_members ENABLE ROW LEVEL SECURITY;
-ALTER TABLE trades ENABLE ROW LEVEL SECURITY;
-ALTER TABLE exit_legs ENABLE ROW LEVEL SECURITY;
-
--- B. Policies
--- Note: Requires `SET app.current_user_id = 'user_id';` at start of transaction
-
--- 1. Users
-CREATE POLICY users_self_access ON users
-    USING (id = current_setting('app.current_user_id')::text);
-
--- 2. Tradebooks
-CREATE POLICY tradebooks_access ON tradebooks
-    USING (
-        owner_id = current_setting('app.current_user_id')::text
-        OR EXISTS (
-            SELECT 1 FROM tradebook_members
-            WHERE tradebook_id = tradebooks.id
-            AND user_id = current_setting('app.current_user_id')::text
-        )
-    );
-
--- 3. Members
-CREATE POLICY members_access ON tradebook_members
-    USING (user_id = current_setting('app.current_user_id')::text);
-
--- 4. Trades
-CREATE POLICY trades_access ON trades
-    USING (
-        EXISTS (
-            SELECT 1 FROM tradebooks
-            WHERE id = trades.tradebook_id
-            AND (
-                owner_id = current_setting('app.current_user_id')::text
-                OR EXISTS (
-                    SELECT 1 FROM tradebook_members
-                    WHERE tradebook_id = tradebooks.id
-                    AND user_id = current_setting('app.current_user_id')::text
-                )
-            )
-        )
-    );
-
--- 5. Exit Legs
-CREATE POLICY exit_legs_access ON exit_legs
-    USING (
-        EXISTS (
-            SELECT 1 FROM trades
-            WHERE id = exit_legs.trade_id
-            AND EXISTS (
-                 SELECT 1 FROM tradebooks
-                 WHERE id = trades.tradebook_id
-                 AND (
-                    owner_id = current_setting('app.current_user_id')::text
-                    OR EXISTS (
-                        SELECT 1 FROM tradebook_members
-                        WHERE tradebook_id = tradebooks.id
-                        AND user_id = current_setting('app.current_user_id')::text
-                    )
-                 )
-            )
-        )
-    );
-
--- ============================================================================
--- Section 6: Indexes & Triggers
+-- Section 5: Indexes & Triggers
 -- ============================================================================
 
 -- 1. Standard Performance Indexes
@@ -191,19 +115,12 @@ CREATE INDEX IF NOT EXISTS idx_members_user ON tradebook_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_exit_legs_trade ON exit_legs(trade_id);
 
 -- 2. AI & Search Indexes
--- Fast lookups for "How is AAPL doing?"
 CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol);
--- Instant "Active Positions" dashboard
 CREATE INDEX IF NOT EXISTS idx_trades_is_open ON trades(tradebook_id) WHERE is_open = TRUE;
-
--- 3. Deep Analytics Indexes (OPTIMIZED FOR AI AGGREGATION)
--- Allows the AI to instantly group by Asset Class (e.g., "Summarize my Crypto trades")
 CREATE INDEX IF NOT EXISTS idx_trades_asset_analysis ON trades(tradebook_id, asset_class, entry_date);
-
--- Allows the AI to scan time ranges efficiently (e.g., "P&L for Q1 2024")
 CREATE INDEX IF NOT EXISTS idx_trades_date_lookup ON trades(tradebook_id, entry_date DESC);
 
--- 4. Triggers (Auto-update updated_at)
+-- 3. Triggers (Auto-update updated_at)
 CREATE TRIGGER update_users_modtime BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_tradebooks_modtime BEFORE UPDATE ON tradebooks FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_trades_modtime BEFORE UPDATE ON trades FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
