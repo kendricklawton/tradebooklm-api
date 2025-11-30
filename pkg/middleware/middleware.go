@@ -21,7 +21,7 @@ func CORS() gin.HandlerFunc {
 			os.Getenv("TRADEBOOKLM_WEB_URL"),
 		},
 		AllowMethods:     []string{"DELETE", "GET", "PATCH", "POST"},
-		AllowHeaders:     []string{"Authorization", "Content-Type"},
+		AllowHeaders:     []string{"Authorization", "Content-Type", "X-Workos-Token"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	})
@@ -58,16 +58,9 @@ func AuthMiddleware() gin.HandlerFunc {
 			workosClientID = helpers.MustGetenv("WORKOS_CLIENT_ID")
 		)
 
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is required"})
-			c.Abort()
-			return
-		}
-
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		if tokenString == authHeader {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Bearer token format required"})
+		tokenString := c.GetHeader("X-Workos-Token")
+		if tokenString == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "X-Workos-Token header is required"})
 			c.Abort()
 			return
 		}

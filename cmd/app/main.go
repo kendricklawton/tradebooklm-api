@@ -91,6 +91,22 @@ func main() {
 
 		api.GET("/tradebooks", func(c *gin.Context) {
 			services.GetTradebooks(c, config.DB)
+			// c.JSON(200, []models.Tradebook{
+			// 	{
+			// 		ID:        "test-1",
+			// 		Title:     "Test Tradebook 1",
+			// 		CreatedAt: time.Now(),
+			// 		UpdatedAt: time.Now(),
+			// 		Role:      models.Owner,
+			// 	},
+			// 	{
+			// 		ID:        "test-2",
+			// 		Title:     "Test Tradebook 2",
+			// 		CreatedAt: time.Now(),
+			// 		UpdatedAt: time.Now(),
+			// 		Role:      models.Editor,
+			// 	},
+			// })
 		})
 
 		api.PATCH("/tradebook/:tradebookId", func(c *gin.Context) {
